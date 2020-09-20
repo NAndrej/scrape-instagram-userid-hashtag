@@ -82,15 +82,16 @@ class Scraper:
     def download_image(self,image,id):
         print("Downloading image {}".format(image))
 
-        response = requests.get(image, timeout=5)
-        
-        img_path = "{}-".format(self.generated_uuid) + str(id) + ".jpg"
-
-        #Writing image to file
-        file = open(img_path, "wb")
-        file.write(response.content)
-        file.close()
-        print("Image successfully downloaded...")
+        try:
+            response = requests.get(image, timeout=5)
+            img_path = "{} (".format(self.generated_uuid) + str(id) + ").jpg"
+            #Writing image to file
+            file = open(img_path, "wb")
+            file.write(response.content)
+            file.close()
+            print("Image successfully downloaded...")
+        except:
+            print("couldn't fetch image")
 
     def scrape_userid(self):
         # try: 
@@ -104,9 +105,9 @@ class Scraper:
         posts = [post.get_attribute("href") for post in posts if "https://www.instagram.com/p/" in post.get_attribute("href")]
 
         #Scrolling down, appending new posts to posts list
-        for i in range(5):
+        for i in range(random.randint(1, 10)):
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(5)
+            time.sleep(2)
             new_posts = self.driver.find_elements_by_tag_name("a")
             new_posts = [new_post.get_attribute("href") for new_post in new_posts if "https://www.instagram.com/p/" in new_post.get_attribute("href")]
 
@@ -292,5 +293,5 @@ class Scraper:
 if __name__=="__main__":
     s = Scraper()
     s.setup()
-    # s.scrape_hashtag_posts()
+    s.scrape_hashtag_posts()
     s.scrape_userid()
