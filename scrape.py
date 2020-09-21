@@ -5,11 +5,12 @@ import os
 import random
 import csv
 import uuid
+import math
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 import time
-
+import datetime
 class Scraper:
 
     def __init__(self):
@@ -41,14 +42,10 @@ class Scraper:
 
     def get_driver(self):
 
-        # caps = DesiredCapabilities().CHROME       
-        # caps["pageLoadStrategy"] = "none"
-
         user_agent = random.choice(self.user_agents)
 
         chrome_options = webdriver.ChromeOptions()
         chrome_options.add_argument("user-agent="+str(user_agent))
-        # chrome_options.add_argument("proxy-server="+str(next(self.proxypool)))
         # chrome_options.add_argument("headless")
         chrome_options.add_argument("no-sandbox")
         chrome_options.add_argument("--incognito")
@@ -64,16 +61,29 @@ class Scraper:
         self.output = os.path.join(os.getcwd(), "{}.csv".format(self.generated_uuid))
         self.write_csv(self.output,["ID","Data Type","Username","Number of followers", "Number of following", "Description", "Number of Likes","URL"])
 
-    def scroll_down(self, scrape_type):
+    def get_scroll_num(self,n):
+        if n <= 400:
+            x = math.ceil(n/12)
+        else:
+            x = math.ceil(400/12)
+            
+        # print("{} posts".format(n))
+        print("Scrolling {} times".format(x))
+        return x
+
+    def scroll_down(self, scrape_type, num_posts):
+
+        num_scrolldowns = self.get_scroll_num(num_posts)
+
         if scrape_type == 'hashtag':
-            for i in range(random.randint(1, 10)):
+            for i in range(num_scrolldowns):
                 self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 time.sleep(2)
                 self.hashtag_posts.extend(post.get_attribute("href") for post in self.driver.find_elements_by_tag_name("a") if "https://www.instagram.com/p/" in post.get_attribute("href") and post.get_attribute("href") not in self.hashtag_posts)
             print("{} hashtag posts fetched".format(len(self.hashtag_posts)))
 
         if scrape_type == 'user':
-            for i in range(random.randint(1, 10)):
+            for i in range(num_scrolldowns):
                 self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 time.sleep(2)
                 self.user_posts.extend(post.get_attribute("href") for post in self.driver.find_elements_by_tag_name("a") if "https://www.instagram.com/p/" in post.get_attribute("href") and post.get_attribute("href") not in self.user_posts)
@@ -83,8 +93,9 @@ class Scraper:
         print("Downloading image {}".format(image))
 
         try:
-            response = requests.get(image, timeout=5)
-            img_path = "{} (".format(self.generated_uuid) + str(id) + ").jpg"
+            response = requests.get(image, timeout=15)
+            img_path = "images/"+str(id) + "_{} (".format(self.generated_uuid)+").jpg"
+            now = datetime.datetime.now()
             #Writing image to file
             file = open(img_path, "wb")
             file.write(response.content)
@@ -93,44 +104,26 @@ class Scraper:
         except:
             print("couldn't fetch image")
 
-    def scrape_userid(self):
-        # try: 
-        username = "mikeescamilla"
+    def scrape_userid(self,userid):
+
+        username = userid
         url = self.userid_instagram_url.format(username)
         self.driver.get(url)
-        print(url)
+        self.user_posts = [post.get_attribute("href") for post in self.driver.find_elements_by_tag_name("a") if "https://www.instagram.com/p/" in post.get_attribute("href")]
 
-        #Initial posts, without scrolling
-        posts = self.driver.find_elements_by_tag_name("a")
-        posts = [post.get_attribute("href") for post in posts if "https://www.instagram.com/p/" in post.get_attribute("href")]
-
-        #Scrolling down, appending new posts to posts list
-        for i in range(random.randint(1, 10)):
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
-            new_posts = self.driver.find_elements_by_tag_name("a")
-            new_posts = [new_post.get_attribute("href") for new_post in new_posts if "https://www.instagram.com/p/" in new_post.get_attribute("href")]
-
-            last_ind = new_posts.index(posts[len(posts)-1])
-            current_new_posts = new_posts[-(len(new_posts)-last_ind-1):]
-            
-            for current_new_post in current_new_posts:
-                if "https://www.instagram.com/p/" in current_new_post:
-                    posts.append(current_new_post)
-
-            print("{} Posts fetched".format(len(posts)))
-
+        num_posts = self.fetch_numposts()
+        self.scroll_down('user',num_posts)
 
         time.sleep(3)
         print("Post links fetched completely")
-        print("{} Posts fetched".format(len(posts)))
+        print("{} Posts fetched".format(len(self.user_posts)))
 
         num_followers = self.driver.find_elements_by_class_name('g47SY')[1].text
         num_following = self.driver.find_elements_by_class_name('g47SY')[2].text
 
         print("Iterating trough posts...")
         id = 0
-        for post in posts:
+        for post in self.user_posts:
             id+=1
             data_type = ""
             description = ""
@@ -178,12 +171,6 @@ class Scraper:
             image = self.driver.find_element_by_class_name('FFVAD').get_attribute('srcset').split(' ')[0]
             self.download_image(image,id)
 
-        # except Exception as e:
-        #     self.driver.quit()
-        #     print('except happened')
-        #     print(e)
-        #     exit()
-
         self.driver.quit()
         print('done')
         exit()
@@ -212,12 +199,18 @@ class Scraper:
             self.driver.quit()
             exit()
 
-    def scrape_hashtag_posts(self):
+    def fetch_numposts(self):
+        element = self.driver.find_element_by_class_name('-nal3').text.rstrip(" posts")
+        print(element+" num of posts in this page")
+        return int(element.replace(',', ''))
+
+    def scrape_hashtag_posts(self,hashtag):
         self.hashtag_posts = []
-        self.driver.get(self.hashtag_instagram_url.format("hydrogenwater"))
+        self.driver.get(self.hashtag_instagram_url.format(hashtag))
         self.driver.implicitly_wait(5)
         self.hashtag_posts = [post.get_attribute("href") for post in self.driver.find_elements_by_tag_name("a") if "https://www.instagram.com/p/" in post.get_attribute("href")]
-        self.scroll_down('hashtag')
+        self.hashtag_num_posts = self.fetch_numposts()
+        self.scroll_down('hashtag',self.hashtag_num_posts)
         self.process_scraped_posts(self.hashtag_posts)
 
     def process_scraped_posts(self, posts):
@@ -293,5 +286,13 @@ class Scraper:
 if __name__=="__main__":
     s = Scraper()
     s.setup()
-    s.scrape_hashtag_posts()
-    s.scrape_userid()
+    decision = int(input("Insert 1 for scraping userID or enter 2 for scraping hashtag\n"))
+    if decision == 1:
+        userid = input("Enter the userid\n")
+        s.scrape_userid(userid)
+    elif decision == 2:
+        hashtag = input("Enter the hashtag\n")
+        s.scrape_hashtag_posts(hashtag)
+    else:
+        print("Invalid decision")
+
